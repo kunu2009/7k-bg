@@ -8,19 +8,32 @@ const getClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
+interface EditConfig {
+  model?: string;
+  imageSize?: '1K' | '2K' | '4K';
+}
+
 export const editImageWithGemini = async (
   base64Image: string,
   mimeType: string,
-  prompt: string
+  prompt: string,
+  config: EditConfig = {}
 ): Promise<{ imageUrl?: string; text?: string }> => {
   const ai = getClient();
+  const model = config.model || 'gemini-2.5-flash-image';
   
   // Clean base64 string if it contains the data URL prefix
   const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, '');
 
+  const generateConfig: any = {};
+  // Only add imageConfig if using the pro model, as Flash/Nano models don't support it
+  if (config.imageSize && model === 'gemini-3-pro-image-preview') {
+    generateConfig.imageConfig = { imageSize: config.imageSize };
+  }
+
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
+      model: model,
       contents: {
         parts: [
           {
@@ -34,6 +47,7 @@ export const editImageWithGemini = async (
           },
         ],
       },
+      config: generateConfig,
     });
 
     let resultImageUrl: string | undefined;

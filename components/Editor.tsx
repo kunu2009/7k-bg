@@ -3,7 +3,7 @@ import { ImageFile, EditorStatus, GeneratedImage } from '../types';
 import { 
   WandIcon, DownloadIcon, LoaderIcon, RefreshCwIcon, ArrowRightIcon, 
   SparklesIcon, SunIcon, LayersIcon, ScanIcon, EyeIcon, CropIcon,
-  UndoIcon, RedoIcon
+  UndoIcon, RedoIcon, MaximizeIcon
 } from './Icons';
 import { editImageWithGemini } from '../services/geminiService';
 import { downloadImage } from '../utils/imageUtils';
@@ -13,7 +13,7 @@ interface EditorProps {
   onReset: () => void;
 }
 
-type EditorTab = 'refine' | 'lighting' | 'background' | 'crop';
+type EditorTab = 'refine' | 'lighting' | 'background' | 'crop' | 'upscale';
 
 const LIGHTING_PRESETS = [
   { label: 'Soft Studio', prompt: 'Apply soft, diffuse studio lighting to the product, removing harsh shadows.' },
@@ -101,7 +101,11 @@ export const Editor: React.FC<EditorProps> = ({ initialImage, onReset }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [historyIndex, history]);
 
-  const handleGenerate = async (finalPrompt: string, isMaskRequest: boolean = false) => {
+  const handleGenerate = async (
+    finalPrompt: string, 
+    isMaskRequest: boolean = false, 
+    config: { model?: string, imageSize?: '1K' | '2K' | '4K' } = {}
+  ) => {
     if (!finalPrompt.trim()) return;
 
     setStatus(EditorStatus.PROCESSING);
@@ -111,7 +115,8 @@ export const Editor: React.FC<EditorProps> = ({ initialImage, onReset }) => {
       const result = await editImageWithGemini(
         currentImage.base64,
         currentImage.mimeType,
-        finalPrompt
+        finalPrompt,
+        config
       );
 
       if (result.imageUrl) {
@@ -172,6 +177,23 @@ export const Editor: React.FC<EditorProps> = ({ initialImage, onReset }) => {
 
   const handlePresetClick = (presetPrompt: string) => {
     handleGenerate(presetPrompt);
+  };
+
+  const handleUpscale = async (size: '2K' | '4K') => {
+    // Check for API key presence if needed
+    if ((window as any).aistudio) {
+        try {
+           const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+           if (!hasKey) {
+               await (window as any).aistudio.openSelectKey();
+           }
+        } catch (e) {
+           console.error("API Key check failed", e);
+        }
+    }
+
+    const prompt = "High resolution, highly detailed version of this image. Preserve all details and content exactly.";
+    handleGenerate(prompt, false, { model: 'gemini-3-pro-image-preview', imageSize: size });
   };
 
   // Crop Handlers
@@ -264,7 +286,7 @@ export const Editor: React.FC<EditorProps> = ({ initialImage, onReset }) => {
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full">
           
           {/* Tabs Header */}
-          <div className="grid grid-cols-4 border-b border-slate-100">
+          <div className="grid grid-cols-5 border-b border-slate-100">
             <button
               onClick={() => setActiveTab('refine')}
               className={`py-3 text-[10px] sm:text-xs font-semibold flex flex-col items-center gap-1 transition-colors ${activeTab === 'refine' ? 'text-indigo-600 bg-indigo-50/50 border-b-2 border-indigo-600' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
@@ -292,6 +314,13 @@ export const Editor: React.FC<EditorProps> = ({ initialImage, onReset }) => {
             >
               <CropIcon className="w-4 h-4" />
               Crop
+            </button>
+            <button
+              onClick={() => setActiveTab('upscale')}
+              className={`py-3 text-[10px] sm:text-xs font-semibold flex flex-col items-center gap-1 transition-colors ${activeTab === 'upscale' ? 'text-indigo-600 bg-indigo-50/50 border-b-2 border-indigo-600' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
+            >
+              <MaximizeIcon className="w-4 h-4" />
+              Scale
             </button>
           </div>
 
@@ -497,6 +526,54 @@ export const Editor: React.FC<EditorProps> = ({ initialImage, onReset }) => {
                 </div>
               </div>
             )}
+
+            {/* UPSCALE TAB */}
+            {activeTab === 'upscale' && (
+              <div className="space-y-6 animate-in fade-in duration-300">
+                <div className="space-y-2">
+                  <h3 className="font-semibold text-slate-800">AI Upscaler</h3>
+                  <p className="text-xs text-slate-500">Enhance resolution and details up to 4K.</p>
+                </div>
+
+                <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100 text-indigo-700 text-sm">
+                  <p className="flex items-center font-medium mb-1">
+                    <SparklesIcon className="w-4 h-4 mr-2" />
+                    Pro Feature
+                  </p>
+                  <p className="text-xs opacity-90 leading-relaxed">
+                    Upscaling uses the <strong>Gemini 3 Pro</strong> model. You may need to connect a paid API key to use high-resolution generation.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <button 
+                    onClick={() => handleUpscale('2K')}
+                    disabled={status === EditorStatus.PROCESSING}
+                    className="w-full flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-400 hover:shadow-md transition-all group text-left"
+                  >
+                     <div>
+                       <span className="block text-sm font-bold text-slate-700 group-hover:text-indigo-700">Upscale to 2K</span>
+                       <span className="text-xs text-slate-400">2048 x 2048 resolution</span>
+                     </div>
+                     <MaximizeIcon className="w-5 h-5 text-slate-300 group-hover:text-indigo-500" />
+                  </button>
+
+                  <button 
+                    onClick={() => handleUpscale('4K')}
+                    disabled={status === EditorStatus.PROCESSING}
+                    className="w-full flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-400 hover:shadow-md transition-all group text-left"
+                  >
+                     <div>
+                       <span className="block text-sm font-bold text-slate-700 group-hover:text-indigo-700">Upscale to 4K</span>
+                       <span className="text-xs text-slate-400">4096 x 4096 resolution</span>
+                     </div>
+                     <div className="flex items-center text-xs font-bold px-2 py-1 bg-indigo-100 text-indigo-700 rounded ml-2">
+                        PRO
+                     </div>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -655,7 +732,7 @@ export const Editor: React.FC<EditorProps> = ({ initialImage, onReset }) => {
         </div>
         
         <div className="text-center">
-           <p className="text-xs text-slate-400">Powered by Gemini 2.5 Flash Image</p>
+           <p className="text-xs text-slate-400">Powered by Gemini 2.5 Flash Image & Gemini 3 Pro</p>
         </div>
 
       </div>
