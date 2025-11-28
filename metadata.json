@@ -1,0 +1,5 @@
+{
+  "name": "NanoSnap Editor",
+  "description": "A powerful AI image editor powered by Gemini 2.5 Flash Image. Upload photos and use natural language to remove backgrounds, add filters, or modify elements instantly.",
+  "requestFramePermissions": []
+}
