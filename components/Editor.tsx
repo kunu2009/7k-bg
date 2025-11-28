@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ImageFile, EditorStatus, GeneratedImage } from '../types';
 import { 
   WandIcon, DownloadIcon, LoaderIcon, RefreshCwIcon, ArrowRightIcon, 
-  SparklesIcon, SunIcon, LayersIcon, ScanIcon, EyeIcon, CropIcon
+  SparklesIcon, SunIcon, LayersIcon, ScanIcon, EyeIcon, CropIcon,
+  UndoIcon, RedoIcon
 } from './Icons';
 import { editImageWithGemini } from '../services/geminiService';
 import { downloadImage } from '../utils/imageUtils';
@@ -31,7 +32,11 @@ const BACKGROUND_PRESETS = [
 ];
 
 export const Editor: React.FC<EditorProps> = ({ initialImage, onReset }) => {
+  // History Management
+  const [history, setHistory] = useState<ImageFile[]>([initialImage]);
+  const [historyIndex, setHistoryIndex] = useState(0);
   const [currentImage, setCurrentImage] = useState<ImageFile>(initialImage);
+
   const [generatedImage, setGeneratedImage] = useState<GeneratedImage | null>(null);
   const [status, setStatus] = useState<EditorStatus>(EditorStatus.READY);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -49,6 +54,52 @@ export const Editor: React.FC<EditorProps> = ({ initialImage, onReset }) => {
   const [cropStart, setCropStart] = useState<{ x: number, y: number } | null>(null);
   const [cropEnd, setCropEnd] = useState<{ x: number, y: number } | null>(null);
   const [isDraggingCrop, setIsDraggingCrop] = useState(false);
+
+  // History Helper Functions
+  const addToHistory = (newImage: ImageFile) => {
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push(newImage);
+    setHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+    setCurrentImage(newImage);
+  };
+
+  const undo = () => {
+    if (historyIndex > 0) {
+      const newIndex = historyIndex - 1;
+      setHistoryIndex(newIndex);
+      setCurrentImage(history[newIndex]);
+      setGeneratedImage(null); // Clear preview when moving through history
+    }
+  };
+
+  const redo = () => {
+    if (historyIndex < history.length - 1) {
+      const newIndex = historyIndex + 1;
+      setHistoryIndex(newIndex);
+      setCurrentImage(history[newIndex]);
+      setGeneratedImage(null);
+    }
+  };
+
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Undo: Ctrl+Z
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      }
+      // Redo: Ctrl+Shift+Z or Ctrl+Y
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        redo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [historyIndex, history]);
 
   const handleGenerate = async (finalPrompt: string, isMaskRequest: boolean = false) => {
     if (!finalPrompt.trim()) return;
@@ -91,12 +142,14 @@ export const Editor: React.FC<EditorProps> = ({ initialImage, onReset }) => {
       const mimeMatch = generatedImage.imageUrl.match(/data:([^;]+);/);
       const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
       
-      setCurrentImage({
+      const newImage: ImageFile = {
         ...currentImage,
         base64: generatedImage.imageUrl,
         previewUrl: generatedImage.imageUrl,
         mimeType: mimeType
-      });
+      };
+      
+      addToHistory(newImage);
       setGeneratedImage(null);
       setTargetObject('');
       setEditAction('');
@@ -183,11 +236,13 @@ export const Editor: React.FC<EditorProps> = ({ initialImage, onReset }) => {
 
       const croppedBase64 = canvas.toDataURL(currentImage.mimeType);
       
-      setCurrentImage({
+      const newImage: ImageFile = {
         ...currentImage,
         base64: croppedBase64,
         previewUrl: croppedBase64,
-      });
+      };
+
+      addToHistory(newImage);
       
       // Reset crop state
       setCropStart(null);
@@ -451,13 +506,32 @@ export const Editor: React.FC<EditorProps> = ({ initialImage, onReset }) => {
         
         {/* Top Actions */}
         <div className="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-          <button 
-            onClick={onReset}
-            className="flex items-center px-3 py-2 text-slate-500 hover:text-slate-800 hover:bg-slate-50 rounded-lg transition-colors text-sm font-medium"
-          >
-            <ArrowRightIcon className="w-4 h-4 mr-2 rotate-180" />
-            New Image
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={onReset}
+              className="flex items-center px-3 py-2 text-slate-500 hover:text-slate-800 hover:bg-slate-50 rounded-lg transition-colors text-sm font-medium"
+            >
+              <ArrowRightIcon className="w-4 h-4 mr-2 rotate-180" />
+              New Image
+            </button>
+            <div className="h-6 w-px bg-slate-200 mx-1" />
+            <button
+              onClick={undo}
+              disabled={historyIndex === 0}
+              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-50 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+              title="Undo (Ctrl+Z)"
+            >
+              <UndoIcon className="w-5 h-5" />
+            </button>
+            <button
+              onClick={redo}
+              disabled={historyIndex === history.length - 1}
+              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-50 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+              title="Redo (Ctrl+Y)"
+            >
+              <RedoIcon className="w-5 h-5" />
+            </button>
+          </div>
           
           <div className="flex gap-2">
              {generatedImage && activeTab !== 'crop' && (
